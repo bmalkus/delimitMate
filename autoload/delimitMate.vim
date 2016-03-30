@@ -324,7 +324,7 @@ function! delimitMate#SkipDelim(char) "{{{
   if pre == "\\"
     " Escaped character
     return a:char
-  elseif cur == a:char
+  elseif cur == a:char && s:balance_matchpairs(a:char) <= 0
     " Exit pair
     return a:char . "\<Del>"
   elseif delimitMate#IsEmptyPair( pre . a:char )
@@ -419,6 +419,14 @@ function! delimitMate#JumpOut(char) "{{{
     return s:joinUndo() . "\<Right>" . s:joinUndo() . "\<Right>"
   elseif jump == 5
     return "\<Down>\<C-O>I" . s:joinUndo() . "\<Right>"
+  else
+    return a:char
+  endif
+endfunction " }}}
+
+function! delimitMate#ConditionalJumpOut(char) "{{{
+  if s:balance_matchpairs(a:char) <= 0
+    return delimitMate#JumpOut(a:char)
   else
     return a:char
   endif

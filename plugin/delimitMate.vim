@@ -297,7 +297,7 @@ function! s:AutoClose() "{{{
   for delim in s:get('right_delims')
     let delim = delim == '|' ? '<bar>' : delim
     exec 'inoremap <expr><silent> <Plug>delimitMate' . delim
-                \. ' <SID>TriggerAbb().delimitMate#JumpOut("\' . delim . '")'
+                \. ' <SID>TriggerAbb().delimitMate#ConditionalJumpOut("\' . delim . '")'
     exec 'silent! imap <unique> <buffer> ' . delim
                 \. ' <Plug>delimitMate'. delim
   endfor
