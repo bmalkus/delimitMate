@@ -214,16 +214,17 @@ function! s:is_forbidden(char) "{{{
   return index(s:get('excluded_regions_list'), region) >= 0
 endfunction "}}}
 
-function! s:balance_matchpairs(char) "{{{
+function! s:balance_matchpairs(char, ...) "{{{
   " Returns:
   " = 0 => Parens balanced.
   " > 0 => More opening parens.
   " < 0 => More closing parens.
 
-  let line = getline('.')
+  let lines_to_check = get(a:, 1, 1)
+  let lines = join(getline('.', line('.') + lines_to_check - 1))
   let col = s:cursor_idx() - 1
   let col = col >= 0 ? col : 0
-  let list = split(line, '\zs')
+  let list = split(lines, '\zs')
   let left = s:get('left_delims')[index(s:get('right_delims'), a:char)]
   let right = a:char
   let opening = 0
@@ -324,7 +325,7 @@ function! delimitMate#SkipDelim(char) "{{{
   if pre == "\\"
     " Escaped character
     return a:char
-  elseif cur == a:char && s:balance_matchpairs(a:char) <= 0
+  elseif cur == a:char && s:balance_matchpairs(a:char, 10) <= 0
     " Exit pair
     return a:char . "\<Del>"
   elseif delimitMate#IsEmptyPair( pre . a:char )
@@ -425,7 +426,7 @@ function! delimitMate#JumpOut(char) "{{{
 endfunction " }}}
 
 function! delimitMate#ConditionalJumpOut(char) "{{{
-  if s:balance_matchpairs(a:char) <= 0
+  if s:balance_matchpairs(a:char, 10) <= 0
     return delimitMate#JumpOut(a:char)
   else
     return a:char
