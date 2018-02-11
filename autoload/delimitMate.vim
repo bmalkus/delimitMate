@@ -184,7 +184,7 @@ function! s:is_empty_quotes() "{{{
 endfunction "}}}
 
 function! s:cursor_idx() "{{{
-  let idx = len(split(getline('.')[: col('.') - 1], '\zs')) - 1
+  let idx = virtcol('.') - 1
   return idx
 endfunction "delimitMate#CursorCol }}}
 
@@ -222,7 +222,7 @@ function! s:balance_matchpairs(char, ...) "{{{
 
   let lines_to_check = get(a:, 1, 1)
   let lines = join(getline('.', line('.') + lines_to_check - 1))
-  let col = s:cursor_idx() - 1
+  let col = s:cursor_idx()
   let col = col >= 0 ? col : 0
   let list = split(lines, '\zs')
   let left = s:get('left_delims')[index(s:get('right_delims'), a:char)]
@@ -230,23 +230,32 @@ function! s:balance_matchpairs(char, ...) "{{{
   let opening = 0
   let closing = 0
 
-  " If the cursor is not at the beginning, count what's behind it.
-  if col > 0
-      " Find the first opening paren:
-      let start = index(list, left)
-      " Must be before cursor:
-      let start = start < col ? start : col - 1
-      " Now count from the first opening until the cursor, this will prevent
-      " extra closing parens from being counted.
-      let opening = count(list[start : col - 1], left)
-      let closing = count(list[start : col - 1], right)
-      " I don't care if there are more closing parens than opening parens.
-      let closing = closing > opening ? opening : closing
-  endif
+  " Evaluate parens to the right of the cursor
+  for char in list[:col-1]
+    if char == right
+      if opening > 0
+        let opening -= 1
+      endif
+    elseif char == left
+      let opening += 1
+    endif
+  endfor
 
-  " Evaluate parens from the cursor to the end:
-  let opening += count(list[col :], left)
-  let closing += count(list[col :], right)
+  " Evaluate parens from the cursor to the end
+  " opening_to_right is used to ignore opening ones to the right of the cursor
+  " which are not closed - they may be closed in further lines
+  let opening_to_right = 0
+  for char in list[col:]
+    if char == right
+      if opening_to_right > 0
+        let opening_to_right -= 1
+      else
+        let closing += 1
+      endif
+    elseif char == left
+      let opening_to_right += 1
+    endif
+  endfor
 
   " Return the found balance:
   return opening - closing
@@ -344,7 +353,7 @@ function! delimitMate#ParenDelim(right) " {{{
   endif
   " Try to balance matchpairs
   if s:get('balance_matchpairs') &&
-        \ s:balance_matchpairs(a:right) < 0
+        \ s:balance_matchpairs(a:right, 10) < 0
     return left
   endif
   let line = getline('.')
