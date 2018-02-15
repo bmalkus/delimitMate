@@ -560,7 +560,7 @@ function! delimitMate#BS() " {{{
     let extra = ''
   elseif &bs !~ 'start\|2'
     let extra = ''
-  elseif delimitMate#WithinEmptyPair()
+  elseif delimitMate#WithinEmptyPair() && s:balance_matchpairs(s:get_char(0)) <= 0
     let extra = "\<Del>"
   elseif s:is_space_expansion()
     let extra = "\<Del>"
