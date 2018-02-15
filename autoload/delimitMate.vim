@@ -12,6 +12,8 @@ if !exists('s:options')
   let s:options = {}
 endif
 
+let s:lines_to_check = 7
+
 function! s:set(name, value, ...) "{{{
   let scope = a:0 ? a:1 : 's'
   let bufnr = bufnr('%')
@@ -214,23 +216,32 @@ function! s:is_forbidden(char) "{{{
   return index(s:get('excluded_regions_list'), region) >= 0
 endfunction "}}}
 
-function! s:balance_matchpairs(char, ...) "{{{
+function! s:balance_matchpairs(char) "{{{
   " Returns:
   " = 0 => Parens balanced.
   " > 0 => More opening parens.
   " < 0 => More closing parens.
 
-  let lines_to_check = get(a:, 1, 1)
-  let lines = join(getline('.', line('.') + lines_to_check - 1))
+  let previous_lines_len = 0
+  if s:lines_to_check > 1
+    let start = line('.') - s:lines_to_check
+    let start = start >= 1 ? start : 1
+    let previous_lines = join(getline(start, line('.') - 1))
+    let previous_lines_len = len(previous_lines) + 1
+    let lines = previous_lines . ' ' . join(getline('.', line('.') + s:lines_to_check - 1))
+  else
+    let lines = getline('.')
+  endif
   let col = s:cursor_idx()
   let col = col >= 0 ? col : 0
+  let col = previous_lines_len + col
   let list = split(lines, '\zs')
   let left = s:get('left_delims')[index(s:get('right_delims'), a:char)]
   let right = a:char
   let opening = 0
   let closing = 0
 
-  " Evaluate parens to the right of the cursor
+  " Evaluate parens to the left of the cursor
   for char in list[:col-1]
     if char == right
       if opening > 0
@@ -334,7 +345,7 @@ function! delimitMate#SkipDelim(char) "{{{
   if pre == "\\"
     " Escaped character
     return a:char
-  elseif cur == a:char && s:balance_matchpairs(a:char, 10) <= 0
+  elseif cur == a:char && s:balance_matchpairs(a:char) <= 0
     " Exit pair
     return a:char . "\<Del>"
   elseif delimitMate#IsEmptyPair( pre . a:char )
@@ -353,7 +364,7 @@ function! delimitMate#ParenDelim(right) " {{{
   endif
   " Try to balance matchpairs
   if s:get('balance_matchpairs') &&
-        \ s:balance_matchpairs(a:right, 10) < 0
+        \ s:balance_matchpairs(a:right) < 0
     return left
   endif
   let line = getline('.')
@@ -435,7 +446,7 @@ function! delimitMate#JumpOut(char) "{{{
 endfunction " }}}
 
 function! delimitMate#ConditionalJumpOut(char) "{{{
-  if s:balance_matchpairs(a:char, 10) <= 0
+  if s:balance_matchpairs(a:char) <= 0
     return delimitMate#JumpOut(a:char)
   else
     return a:char
