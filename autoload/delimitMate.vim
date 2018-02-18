@@ -12,7 +12,7 @@ if !exists('s:options')
   let s:options = {}
 endif
 
-let s:lines_to_check = 7
+let s:lines_to_check = 5
 
 function! s:set(name, value, ...) "{{{
   let scope = a:0 ? a:1 : 's'
@@ -216,56 +216,143 @@ function! s:is_forbidden(char) "{{{
   return index(s:get('excluded_regions_list'), region) >= 0
 endfunction "}}}
 
-function! s:balance_matchpairs(char) "{{{
+function! s:should_ignore(line_num, char_num) "{{{
+  let should_ignore = (index(['String', 'Comment'], synIDattr(synIDtrans(synID(a:line_num, a:char_num, 0)), 'name')) != -1)
+  return should_ignore
+endfunction "}}}
+
+function! s:opening_before_cursor(
+      \ line,
+      \ line_offset,
+      \ left_delim,
+      \ right_delim,
+      \ opening_so_far
+      \ ) "{{{
+  " Checks line char by char, if opening delimiter is encountered,
+  " opening_so_far is incremented, if closing delimiter is encountered,
+  " opening_so_far is decremented - previously opened delimiter is closed.
+  " If opening_so_far is 0, we ignore any closing delimiter, as it is probably
+  " closing something from before checked range.
+  " Also, ignore comments and strings.
+  "
+  " opening_so_far: number of not yet closed left delimiters, from the start
+  " of the checked range
+  " Returns: number of opening delimiters in the line, which are not closed.
+
+  let opening_so_far = a:opening_so_far
+
+  let line_num = line('.') + a:line_offset
+  let char_pos = 0
+  for char in a:line
+    let char_pos += 1
+    if s:should_ignore(line_num, char_pos)
+      continue
+    endif
+    if char == a:right_delim
+      if opening_so_far > 0
+        let opening_so_far -= 1
+      endif
+    elseif char == a:left_delim
+      let opening_so_far += 1
+    endif
+  endfor
+  return opening_so_far
+endfunction "}}}
+
+function! s:check_after_cursor(
+      \ line,
+      \ line_offset,
+      \ left_delim,
+      \ right_delim,
+      \ opening_so_far,
+      \ closing_so_far
+      \ ) "{{{
+  " Works similarly to s:opening_before_cursor().
+  "
+  " opening_so_far: number of opening delimiters, which are not closed,
+  " starting from cursor position
+  " closing_so_far: closing delimiters from the start of checked range
+  " Returns: [opening_so_far, closing_so_far] pair, both updated
+
+  let opening_so_far = a:opening_so_far
+  let closing_so_far = a:closing_so_far
+
+  let line_num = line('.') + a:line_offset
+  let char_pos = 0
+  for char in a:line
+    let char_pos += 1
+    if s:should_ignore(line_num, char_pos)
+      continue
+    endif
+    if char == a:right_delim
+      if opening_so_far > 0
+        let opening_so_far -= 1
+      else
+        let closing_so_far += 1
+      endif
+    elseif char == a:left_delim
+      let opening_so_far += 1
+    endif
+  endfor
+  return [opening_so_far, closing_so_far]
+endfunction "}}}
+
+function! s:balance_matchpairs(right_delim) "{{{
   " Returns:
   " = 0 => Parens balanced.
   " > 0 => More opening parens.
   " < 0 => More closing parens.
 
-  let previous_lines_len = 0
-  if s:lines_to_check > 1
-    let start = line('.') - s:lines_to_check
-    let start = start >= 1 ? start : 1
-    let previous_lines = join(getline(start, line('.') - 1))
-    let previous_lines_len = len(previous_lines) + 1
-    let lines = previous_lines . ' ' . join(getline('.', line('.') + s:lines_to_check - 1))
-  else
-    let lines = getline('.')
+  let previous_lines = []
+  let next_lines = []
+  if s:lines_to_check > 0
+    let beg = max([line('.') - s:lines_to_check, 1])
+    let previous_lines = getline(beg, line('.') - 1)
+    let next_lines = getline(line('.') + 1, line('.') + s:lines_to_check)
+    call map(previous_lines, {_, line -> split(line, '\zs')})
+    call map(next_lines, {_, line -> split(line, '\zs')})
   endif
-  let col = s:cursor_idx()
-  let col = col >= 0 ? col : 0
-  let col = previous_lines_len + col
-  let list = split(lines, '\zs')
-  let left = s:get('left_delims')[index(s:get('right_delims'), a:char)]
-  let right = a:char
+
+  let curr_line = split(getline('.'), '\zs')
+
+  let col = max([s:cursor_idx(), 0])
+
+  let left_delim = s:get('left_delims')[index(s:get('right_delims'), a:right_delim)]
+  let right_delim = a:right_delim
+
   let opening = 0
   let closing = 0
 
-  " Evaluate parens to the left of the cursor
-  for char in list[:col-1]
-    if char == right
-      if opening > 0
-        let opening -= 1
-      endif
-    elseif char == left
-      let opening += 1
-    endif
+  " Count delimiters from the rage beginning to the cursor pos
+  let line_offset = -len(previous_lines)
+  for line in previous_lines
+    let opening = s:opening_before_cursor(line, line_offset, left_delim, right_delim, opening)
+    let line_offset += 1
   endfor
 
-  " Evaluate parens from the cursor to the end
-  " opening_to_right is used to ignore opening ones to the right of the cursor
-  " which are not closed - they may be closed in further lines
+  let opening = s:opening_before_cursor(curr_line[:col-1], 0, left_delim, right_delim, opening)
+
+  " Count delimiters from the cursor pos to the end
   let opening_to_right = 0
-  for char in list[col:]
-    if char == right
-      if opening_to_right > 0
-        let opening_to_right -= 1
-      else
-        let closing += 1
-      endif
-    elseif char == left
-      let opening_to_right += 1
-    endif
+
+  let [opening_to_right, closing] = s:check_after_cursor(
+        \ curr_line[col:],
+        \ 0,
+        \ left_delim,
+        \ right_delim,
+        \ opening_to_right,
+        \ closing)
+
+  let line_offset = 1
+  for line in next_lines
+    let [opening_to_right, closing] = s:check_after_cursor(
+          \ line,
+          \ line_offset,
+          \ left_delim,
+          \ right_delim,
+          \ opening_to_right,
+          \ closing)
+    let line_offset += 1
   endfor
 
   " Return the found balance:
