@@ -309,8 +309,8 @@ function! s:balance_matchpairs(right_delim) "{{{
     let beg = max([line('.') - s:lines_to_check, 1])
     let previous_lines = getline(beg, line('.') - 1)
     let next_lines = getline(line('.') + 1, line('.') + s:lines_to_check)
-    call map(previous_lines, {_, line -> split(line, '\zs')})
-    call map(next_lines, {_, line -> split(line, '\zs')})
+    call map(previous_lines, "split(v:val, '\zs')")
+    call map(next_lines, "split(v:val, '\zs')")
   endif
 
   let curr_line = split(getline('.'), '\zs')
@@ -336,7 +336,7 @@ function! s:balance_matchpairs(right_delim) "{{{
   let opening_to_right = 0
 
   let [opening_to_right, closing] = s:check_after_cursor(
-        \ curr_line[col:],
+        \ curr_line[col :],
         \ 0,
         \ left_delim,
         \ right_delim,
